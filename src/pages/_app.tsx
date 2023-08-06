@@ -13,8 +13,12 @@ import {
 import { useRouter } from "next/router";
 import { Toaster } from "react-hot-toast";
 
+import { date } from "zod";
+import { dark } from "@clerk/themes";
+import { useState } from "react";
+
 const MyApp: AppType = ({ Component, pageProps }) => {
-  const router = useRouter();
+  const [darkMode, setDarkMode] = useState(false);
 
   return (
     <ClerkProvider
@@ -37,15 +41,15 @@ const MyApp: AppType = ({ Component, pageProps }) => {
           termsPageUrl: "https://clerk.com/terms",
         },
         variables: {
-          colorPrimary: "black",
-
-          colorText: "black",
+          colorPrimary: darkMode ? "white" : "black",
+          colorText: darkMode ? "white" : "black",
         },
+        baseTheme: darkMode ? dark : undefined,
       }}
       {...pageProps}
     >
       <SignedIn>
-        <Component {...pageProps} />
+        <Component {...{ darkMode, setDarkMode }} />
         <div>
           <Toaster />
         </div>

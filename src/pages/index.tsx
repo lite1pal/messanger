@@ -4,9 +4,16 @@ import { api } from "~/utils/api";
 import Sidebar, { Chat } from "./components/sidebar";
 import Chatroom from "./components/chatroom";
 import { SignIn, SignInButton, useUser } from "@clerk/clerk-react";
-import { useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { io } from "socket.io-client";
 
-export default function Home() {
+export default function Home({
+  darkMode,
+  setDarkMode,
+}: {
+  darkMode: boolean;
+  setDarkMode: Dispatch<SetStateAction<boolean>>;
+}) {
   const [currentChat, setCurrentChat] = useState<Chat>({
     id: "",
     user1_id: "",
@@ -18,38 +25,40 @@ export default function Home() {
     createdAt: new Date(),
     updatedAt: new Date(),
   });
-
-  useEffect(() => {
-    const handleEscapeKeyPress = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setCurrentChat((prevChat) => ({
-          ...prevChat,
-          id: "", // For example, reset the currentChat.id to null
-        }));
-      }
-    };
-
-    // Remove the previous event listener before adding a new one
-    document.removeEventListener("keydown", handleEscapeKeyPress);
-    document.addEventListener("keydown", handleEscapeKeyPress);
-
-    // Cleanup function to remove the event listener on unmount
-    return () => {
-      document.removeEventListener("keydown", handleEscapeKeyPress);
-    };
-  }, [currentChat.id]);
+  const [isOnline, setIsOnline] = useState(false);
+  // const [darkMode, setDarkMode] = useState(false);
+  const socket = io("http://localhost:4000"); // Replace with the correct URL where your Socket.io server is running
 
   return (
-    <div className="flex w-screen">
-      <Sidebar {...{ currentChat, setCurrentChat }} />
+    <div className={`${darkMode && "dark"} flex w-screen`}>
+      <Sidebar
+        {...{
+          currentChat,
+          setCurrentChat,
+          socket,
+          darkMode,
+          setDarkMode,
+          isOnline,
+        }}
+      />
 
       <div
         className={`${
           currentChat.id && "md:hidden"
-        } hidden h-screen w-full bg-green-200 md:flex`}
+        } hidden h-screen w-full bg-green-200 dark:bg-gradient-to-r dark:from-stone-900 dark:to-stone-700
+         md:flex`}
       ></div>
 
-      <Chatroom {...{ currentChat, setCurrentChat }} />
+      <Chatroom
+        {...{
+          currentChat,
+          setCurrentChat,
+          socket,
+          darkMode,
+          setDarkMode,
+          isOnline,
+        }}
+      />
     </div>
   );
 }

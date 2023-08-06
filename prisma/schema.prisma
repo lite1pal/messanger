@@ -26,6 +26,8 @@ model Chat {
     user2_id String 
     user2_name String
     user2_imageUrl String
+    last_message String
+    last_message_createdAt DateTime @default(now())
 }
 
 model Message {
