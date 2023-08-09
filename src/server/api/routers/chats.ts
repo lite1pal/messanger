@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, privateProcedure, publicProcedure } from "../trpc";
 import { z } from "zod";
 import { clerkClient } from "@clerk/nextjs";
+import cloudinary from "~/server/cloudinary";
 
 export const handleDuration = async (handler: any) => {
   const startTime = process.hrtime();
@@ -21,6 +22,7 @@ export const chatsRouter = createTRPCRouter({
       const chats = await ctx.prisma.chat.findMany({
         where: { OR: [{ user1_id: input.id }, { user2_id: input.id }] },
       });
+
       return chats;
     }),
   update: privateProcedure

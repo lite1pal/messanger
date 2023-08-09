@@ -4,9 +4,8 @@ import LoadingSpinner from "./loading";
 import { Props } from "./sidebar";
 import { api } from "~/utils/api";
 import toast from "react-hot-toast";
-import { useEffect, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
-import { dark } from "@clerk/themes";
 
 export const formatTime = (time: Date) => {
   return new Date(time).toLocaleTimeString([], {
@@ -38,6 +37,9 @@ const Chatroom = (props: Props) => {
   const [emojiPickerVision, setEmojiPickerVision] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const { darkMode, setDarkMode } = props;
+  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageName, setImageName] = useState("");
 
   const handleChatOptionsVision = (boolean: boolean) => {
     if (chatOptionsVision) {
@@ -93,6 +95,7 @@ const Chatroom = (props: Props) => {
             message: messageInput,
             createdAt: new Date(),
           });
+          void ctx.messages.invalidate();
         }
         setMessageInput("");
         setIsSendingMessage(false);
@@ -111,12 +114,24 @@ const Chatroom = (props: Props) => {
   }, [messages]);
 
   const sendMessage = async (e: any) => {
-    if (e.target.value.length > 0 && e.key === "Enter") {
+    if (
+      (e.target.value.length > 0 && e.key === "Enter") ||
+      (imageUrl && e.target.value.length === 0 && e.key === "Enter")
+    ) {
       setIsSendingMessage(true);
+      console.log(imageUrl);
+
+      // downloading an image
+      // if (imageUrl) {
+      //   const blob = await convertBlobUrlToBlob(imageUrl);
+      //   const filename = imageName;
+      //   downloadBlobAsFile(blob, filename);
+      // }
+
       mutate({
         user_id: currentUser.id,
         chat_id: currentChat.id,
-        message: e.target.value,
+        message: imageUrl ? imageUrl : e.target.value,
       });
       update({
         id: currentChat.id,
@@ -125,6 +140,13 @@ const Chatroom = (props: Props) => {
       });
       setMessageInput(e.target.value);
       setEmojiPickerVision(false);
+      setImageUrl(null);
+      const imageInput = document.getElementById(
+        "imageInput"
+      ) as HTMLInputElement;
+      if (imageInput && imageInput.files && imageInput.files[0]) {
+        imageInput.value = "";
+      }
       const messageInputElement = document.getElementById(
         "messageInput"
       ) as HTMLInputElement;
@@ -177,6 +199,27 @@ const Chatroom = (props: Props) => {
       divRef.current.scrollTop = divRef.current.scrollHeight;
     }
   }, [messages]);
+
+  async function convertBlobUrlToBlob(blobUrl: string) {
+    const response = await fetch(blobUrl);
+    const blob = await response.blob();
+    return blob;
+  }
+
+  function downloadBlobAsFile(blob: Blob, filename: string) {
+    const blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = blobUrl;
+    a.download = filename;
+
+    document.body.appendChild(a);
+    a.click();
+
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }
 
   return (
     <div
@@ -351,6 +394,9 @@ const Chatroom = (props: Props) => {
             </div>
           </div>
         )} */}
+        {/* {imageUrl && (
+          <Image width={500} height={500} src={imageUrl} alt="image" />
+        )} */}
 
         <div className="flex h-max w-full items-center space-x-3 px-8 py-3 lg:w-4/6">
           <div
@@ -365,14 +411,6 @@ const Chatroom = (props: Props) => {
                 messageInputElement.value =
                   messageInputElement.value + obj.emoji;
                 messageInputElement.focus();
-                // const messageInputElement = document.getElementById(
-                //   "messageInput"
-                // ) as HTMLInputElement;
-                // messageInputElement?.setAttribute(
-                //   "value",
-                //   (messageInputElement?.value ?? "") + obj.emoji
-                // );
-                // messageInputElement?.focus();
               }}
               lazyLoadEmojis={true}
               width="auto"
@@ -398,10 +436,22 @@ const Chatroom = (props: Props) => {
               />
             </div>
             <div>
-              <i
+              {/* <i
                 className="fa-solid fa-paperclip fa-lg"
                 style={{ color: "gray" }}
-              ></i>
+              ></i> */}
+              <input
+                type="file"
+                id="imageInput"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    const fileUrl = URL.createObjectURL(e.target.files[0]);
+                    setImageUrl(fileUrl);
+                    setImageName(e.target.files[0].name);
+                    console.log(e.target.files[0]);
+                  }
+                }}
+              />
             </div>
           </div>
           <div className="rounded-full bg-white px-5 py-3 transition duration-300 hover:bg-blue-500 dark:bg-stone-800 dark:hover:bg-purple-600 ">
