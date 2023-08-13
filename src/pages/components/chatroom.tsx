@@ -1,12 +1,18 @@
 import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
 import LoadingSpinner from "./loading";
-import { Props } from "./sidebar";
+import { Chat, Props } from "./sidebar";
 import { api } from "~/utils/api";
 import toast from "react-hot-toast";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
-import EmojiPicker, { Theme } from "emoji-picker-react";
+import { useEffect, useRef, useState } from "react";
+import EmojiPicker from "emoji-picker-react";
+import {
+  CldUploadButton,
+  CldImage,
+  CldUploadWidgetResults,
+} from "next-cloudinary";
 
+// formats time from default Date time to hour:minutes type
 export const formatTime = (time: Date) => {
   return new Date(time).toLocaleTimeString([], {
     hour: "2-digit",
@@ -15,32 +21,59 @@ export const formatTime = (time: Date) => {
   });
 };
 
-const Chatroom = (props: Props) => {
-  const { user: currentUser } = useUser();
-  if (!currentUser) return <LoadingSpinner />;
-  const [messageInput, setMessageInput] = useState("");
-  const divRef = useRef<HTMLDivElement>(null);
-  const ctx = api.useContext();
-  const currentChat = props.currentChat;
-  const socket = props.socket;
-  const chat =
-    currentChat.user1_id === currentUser.id
-      ? { name: currentChat.user2_name, imageUrl: currentChat.user2_imageUrl }
-      : { name: currentChat.user1_name, imageUrl: currentChat.user1_imageUrl };
+export interface Message {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  message: string;
+  imageId: string;
+  chat_id: string;
+  user_id: string;
+}
 
+type CldUploadSuccess = {
+  event: string;
+  info: {
+    public_id: string;
+  };
+};
+
+const Chatroom = (props: Props) => {
+  // gets info about current user using clerk API
+  const { user: currentUser } = useUser();
+
+  // returns LoadingSpinner if current use is still null
+  if (!currentUser) return <LoadingSpinner />;
+
+  // react state
+  const [messageInput, setMessageInput] = useState("");
+  const [imageInput, setImageInput] = useState("");
+  const [chatOptionsVision, setChatOptionsVision] = useState(false);
+  const [emojiPickerVision, setEmojiPickerVision] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  // refs
+  const divRef = useRef<HTMLDivElement>(null);
+
+  // API context
+  const ctx = api.useContext();
+
+  // props
+  const { currentChat, socket, darkMode, setDarkMode } = props;
+
+  // fetches a list of messages from the server based on currentChat
   const { data: messages, isLoading: messagesLoading } =
     api.messages.getAllByChatId.useQuery({
       chat_id: currentChat.id,
     });
 
-  const [chatOptionsVision, setChatOptionsVision] = useState(false);
-  const [emojiPickerVision, setEmojiPickerVision] = useState(false);
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const { darkMode, setDarkMode } = props;
-  const [image, setImage] = useState<File | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageName, setImageName] = useState("");
+  // determines name and imageUrl of current chat
+  const chat =
+    currentChat.user1_id === currentUser.id
+      ? { name: currentChat.user2_name, imageUrl: currentChat.user2_imageUrl }
+      : { name: currentChat.user1_name, imageUrl: currentChat.user1_imageUrl };
 
+  // handles a vision of chat options at the top of the chatroom when an options button is clicked
   const handleChatOptionsVision = (boolean: boolean) => {
     if (chatOptionsVision) {
       setChatOptionsVision(false);
@@ -49,6 +82,7 @@ const Chatroom = (props: Props) => {
     }
   };
 
+  // handles a vision of emoji picker beside message input when a smile button is clicked
   const handleEmojiPickerVision = (boolean: boolean) => {
     if (emojiPickerVision) {
       setEmojiPickerVision(false);
@@ -57,82 +91,99 @@ const Chatroom = (props: Props) => {
     }
   };
 
+  // hides a chatroom ( but only in case if any chat is opened) when Escape button is clicked
   useEffect(() => {
     const handleEscapeKeyPress = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         props.setCurrentChat((prevChat) => ({
           ...prevChat,
-          id: "", // For example, reset the currentChat.id to null
+          id: "",
         }));
         setChatOptionsVision(false);
         setEmojiPickerVision(false);
       }
     };
 
-    // Remove the previous event listener before adding a new one
+    // Removes the previous event listener before adding a new one
     document.removeEventListener("keydown", handleEscapeKeyPress);
     document.addEventListener("keydown", handleEscapeKeyPress);
 
-    // Cleanup function to remove the event listener on unmount
+    // Cleans up function to remove the event listener on unmount
     return () => {
       document.removeEventListener("keydown", handleEscapeKeyPress);
     };
   }, [currentChat.id]);
 
-  // if (messages === undefined) return <LoadingSpinner />;
+  // listens for an event from the socket to make a data change in real-time
+  useEffect(() => {
+    socket.on("send_message", () => {
+      // makes requests to sync up with messages and chats from the database to the front-end
+      void ctx.messages.invalidate();
+      void ctx.chats.invalidate();
+    });
+  }, []);
 
-  // send a message in the chat
+  // gets mutate function that can be use to create a new message
   const { mutate, isLoading: sendingMessageLoading } =
     api.messages.create.useMutation({
+      // in case of successfully created message, this callback function is invoked
       onSuccess: () => {
+        // only users that belong to this chat must see the change in real-time
         if (
           currentUser.id === currentChat.user1_id ||
           currentUser.id === currentChat.user2_id
         ) {
+          // emits necessary data to the server in order to update messages in real-time for both users
           socket.emit("send_message", {
             user_id: currentUser.id,
             chat_id: currentChat.id,
-            message: messageInput,
+            message: messageInput.length > 0 ? messageInput : "empty",
+            imageId: imageInput,
             createdAt: new Date(),
           });
+
+          // CAN BE REMOVED
           void ctx.messages.invalidate();
         }
+        // clears message input
         setMessageInput("");
+        setImageInput("");
         setIsSendingMessage(false);
       },
+      // if error occurs, this callback function is invoked
       onError: (err) => {
         console.error(err.message);
         toast.error(err.message);
       },
     });
 
-  useEffect(() => {
-    socket.on("send_message", () => {
-      void ctx.messages.invalidate();
-      void ctx.chats.invalidate();
-    });
-  }, [messages]);
+  // clears message input
+  const clearMessageInput = () => {
+    const messageInputElement = document.getElementById(
+      "messageInput"
+    ) as HTMLInputElement;
+    if (messageInputElement && messageInputElement.value) {
+      messageInputElement.value = "";
+    }
+  };
 
+  // sends a message
   const sendMessage = async (e: any) => {
     if (
-      (e.target.value.length > 0 && e.key === "Enter") ||
-      (imageUrl && e.target.value.length === 0 && e.key === "Enter")
+      // input must not be empty and Enter must be clicked to send a message
+      e.target.value.length > 0 &&
+      e.key === "Enter"
     ) {
       setIsSendingMessage(true);
-      console.log(imageUrl);
 
-      // downloading an image
-      // if (imageUrl) {
-      //   const blob = await convertBlobUrlToBlob(imageUrl);
-      //   const filename = imageName;
-      //   downloadBlobAsFile(blob, filename);
-      // }
-
+      // tries to create a message
       mutate({
         user_id: currentUser.id,
         chat_id: currentChat.id,
-        message: imageUrl ? imageUrl : e.target.value,
+        message: e.target.value,
+        imageId: "empty",
       });
+      // tries to update a chat
       update({
         id: currentChat.id,
         last_message: e.target.value,
@@ -140,27 +191,37 @@ const Chatroom = (props: Props) => {
       });
       setMessageInput(e.target.value);
       setEmojiPickerVision(false);
-      setImageUrl(null);
-      const imageInput = document.getElementById(
-        "imageInput"
-      ) as HTMLInputElement;
-      if (imageInput && imageInput.files && imageInput.files[0]) {
-        imageInput.value = "";
-      }
-      const messageInputElement = document.getElementById(
-        "messageInput"
-      ) as HTMLInputElement;
-      if (messageInputElement && messageInputElement.value) {
-        messageInputElement.value = "";
-      }
-      // messageInputElement?.setAttribute("value", "");
+
+      // NEED TO BE CHANGED AS IT IS NOT THE BEST PRACTICE IN REACT
+      // clears up message input
+      clearMessageInput();
     }
   };
 
-  // delete a chat
+  const uploadImage = (result: CldUploadSuccess) => {
+    if (result.info.public_id && currentUser.id && currentChat.id) {
+      setImageInput(result.info.public_id);
+      mutate({
+        user_id: currentUser.id,
+        chat_id: currentChat.id,
+        message: "empty",
+        imageId: result.info.public_id,
+      });
+      clearMessageInput();
+      toast.success("Upload is successful");
+    } else {
+      toast.error(
+        "Something went wrong when uploading an image, try again a bit later"
+      );
+    }
+  };
+
+  // gets mutate func to delete a chat
   const { mutate: deleteChat } = api.chats.delete.useMutation({
     onSuccess: () => {
       void ctx.chats.invalidate();
+
+      // sets current chat id to empty string and therefore hides the chatroom
       props.setCurrentChat({ ...currentChat, id: "" });
       setChatOptionsVision(false);
     },
@@ -170,6 +231,7 @@ const Chatroom = (props: Props) => {
     },
   });
 
+  // gets mutate func to delete a message
   const { mutate: deleteMessage } = api.chats.delete.useMutation({
     onSuccess: () => {
       void ctx.messages.invalidate();
@@ -181,10 +243,10 @@ const Chatroom = (props: Props) => {
     },
   });
 
-  // update a chat info when a message is sent
+  // gets mutate func to update a chat when a new message is created
   const { mutate: update } = api.chats.update.useMutation({
     onSuccess: () => {
-      // void ctx.chats.invalidate();
+      void ctx.chats.invalidate();
       console.log("chats are updated");
     },
     onError: (err) => {
@@ -193,6 +255,7 @@ const Chatroom = (props: Props) => {
     },
   });
 
+  // NEEDS TO BE UPDATED BECAUSE IF A SUDDEN RENDER OCCURS, IT MOVES IT TO THE BOTTOM EVEN IF YOU SCROLLED TO THE MIDDLE OF THE CONVERSATION
   // set a scroll of the chatroom to the bottom when a message is sent
   useEffect(() => {
     if (divRef.current) {
@@ -200,33 +263,15 @@ const Chatroom = (props: Props) => {
     }
   }, [messages]);
 
-  async function convertBlobUrlToBlob(blobUrl: string) {
-    const response = await fetch(blobUrl);
-    const blob = await response.blob();
-    return blob;
-  }
-
-  function downloadBlobAsFile(blob: Blob, filename: string) {
-    const blobUrl = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.style.display = "none";
-    a.href = blobUrl;
-    a.download = filename;
-
-    document.body.appendChild(a);
-    a.click();
-
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  }
-
+  // renders actual chatroom component
   return (
     <div
       className={`${
         !currentChat.id && "hidden"
       } flex h-screen w-full flex-col transition duration-700`}
     >
+      {/* Chatroom's header */}
+
       <div className="flex h-fit w-full items-center justify-between border-b px-2 py-2 dark:border-0 dark:border-stone-700 dark:bg-stone-900 md:px-6">
         <div
           onClick={() => props.setCurrentChat({ ...currentChat, id: "" })}
@@ -237,13 +282,15 @@ const Chatroom = (props: Props) => {
         </div>
         <div className="flex space-x-2 md:space-x-4">
           <div>
-            <Image
-              className="rounded-full"
-              width="42"
-              height="42"
-              src={chat.imageUrl}
-              alt="chatImage"
-            />
+            {chat.imageUrl && (
+              <Image
+                className="rounded-full"
+                width="42"
+                height="42"
+                src={chat.imageUrl}
+                alt="chatImage"
+              />
+            )}
           </div>
           <div className="flex flex-col">
             <div className="text-sm font-semibold dark:text-white sm:text-base">
@@ -255,7 +302,7 @@ const Chatroom = (props: Props) => {
           </div>
         </div>
         <div className="flex items-center space-x-3 md:space-x-8">
-          <div className="rounded-full px-2 py-1 transition duration-300 hover:bg-slate-200 dark:hover:bg-stone-600">
+          <div className="pointer-events-none rounded-full px-2 py-1 opacity-0 transition duration-300 hover:bg-slate-200 dark:hover:bg-stone-600">
             <i
               className="fa-solid fa-magnifying-glass"
               style={{ color: "gray" }}
@@ -272,7 +319,7 @@ const Chatroom = (props: Props) => {
               !chatOptionsVision && "pointer-events-none opacity-0"
             } absolute right-6 top-16 flex w-2/12 flex-col space-y-1 bg-slate-50 bg-opacity-95 p-2 text-sm transition dark:bg-stone-900 dark:text-white`}
           >
-            <div className="flex items-center space-x-4 rounded-full p-2 hover:bg-slate-200 dark:hover:bg-stone-700">
+            {/* <div className="flex items-center space-x-4 rounded-full p-2 hover:bg-slate-200 dark:hover:bg-stone-700">
               <div>
                 <i className="fa-solid fa-pen-to-square"></i>
               </div>
@@ -283,8 +330,8 @@ const Chatroom = (props: Props) => {
                 <i className="fa-solid fa-bell-slash"></i>
               </div>
               <div>Mute</div>
-            </div>
-            <hr className="dark:opacity-30" />
+            </div> */}
+            {/* <hr className="dark:opacity-30" /> */}
             <div
               onClick={() => {
                 deleteChat({ id: currentChat.id });
@@ -299,6 +346,9 @@ const Chatroom = (props: Props) => {
           </div>
         </div>
       </div>
+
+      {/*   Body of chatroom where messages and message input are   */}
+
       <div
         onClick={() => {
           setChatOptionsVision(false);
@@ -365,38 +415,35 @@ const Chatroom = (props: Props) => {
                   >
                     h
                   </div>
-                  <div
-                    className={`flex w-fit items-center justify-between space-x-3 rounded-xl ${
-                      !messageRight && "bg-white dark:bg-stone-700"
-                    }  bg-green-400 px-2 py-1 dark:bg-purple-600`}
-                  >
-                    <div className="dark:text-white">{message.message}</div>
-                    <div className="mt-2 text-xs font-light text-slate-500 dark:text-slate-200">
-                      {formattedTime}
+                  {message.imageId && message.imageId !== "empty" ? (
+                    <div className="rounded border-gray-400">
+                      <CldImage
+                        width="400"
+                        height="400"
+                        src={message.imageId}
+                        sizes="100vw"
+                        alt="Description of my image"
+                      />
                     </div>
-                  </div>
+                  ) : (
+                    <div
+                      className={`flex w-fit items-center justify-between space-x-3 rounded-xl ${
+                        !messageRight && "bg-white dark:bg-stone-700"
+                      }  bg-green-400 px-2 py-1 dark:bg-purple-600`}
+                    >
+                      <div className="dark:text-white">{message.message}</div>
+                      <div className="mt-2 text-xs font-light text-slate-500 dark:text-slate-200">
+                        {formattedTime}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             );
           })}
         </div>
-        {/* {isSendingMessage && (
-          <div
-            className={`flex w-fit items-center justify-between space-x-3 rounded-xl bg-green-400 px-2 py-1 dark:bg-purple-600`}
-          >
-            <div className="text-slate-600 dark:text-white">{messageInput}</div>
-            <div className="mt-2 text-xs font-light text-slate-300 dark:text-slate-200">
-              {new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              })}
-            </div>
-          </div>
-        )} */}
-        {/* {imageUrl && (
-          <Image width={500} height={500} src={imageUrl} alt="image" />
-        )} */}
+
+        {/*   Message input with emoji picker  */}
 
         <div className="flex h-max w-full items-center space-x-3 px-8 py-3 lg:w-4/6">
           <div
@@ -429,37 +476,34 @@ const Chatroom = (props: Props) => {
                 className="w-10/12 text-sm outline-none dark:bg-stone-800 dark:text-white"
                 type="text"
                 placeholder="Message"
-                // onChange={updateMessageInput}
                 onKeyDown={sendMessage}
-                // value={messageInput}
+                onClick={() => setEmojiPickerVision(false)}
                 id="messageInput"
               />
             </div>
-            <div>
-              {/* <i
-                className="fa-solid fa-paperclip fa-lg"
-                style={{ color: "gray" }}
-              ></i> */}
-              <input
-                type="file"
-                id="imageInput"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    const fileUrl = URL.createObjectURL(e.target.files[0]);
-                    setImageUrl(fileUrl);
-                    setImageName(e.target.files[0].name);
-                    console.log(e.target.files[0]);
-                  }
+
+            <div className="text-sm font-medium text-slate-500 dark:text-slate-300">
+              <CldUploadButton
+                onUpload={(opts) => {
+                  const result = opts as CldUploadSuccess;
+                  uploadImage(result);
                 }}
+                onClose={(widget) => {
+                  widget.destroy();
+                }}
+                uploadPreset="mdp1ypb6"
               />
             </div>
           </div>
-          <div className="rounded-full bg-white px-5 py-3 transition duration-300 hover:bg-blue-500 dark:bg-stone-800 dark:hover:bg-purple-600 ">
+
+          {/*   Microphone   */}
+
+          {/* <div className="rounded-full bg-white px-5 py-3 transition duration-300 hover:bg-blue-500 dark:bg-stone-800 dark:hover:bg-purple-600 ">
             <i
               className="fa-solid fa-microphone fa-lg"
               style={{ color: "gray" }}
             ></i>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

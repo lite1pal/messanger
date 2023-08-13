@@ -1,13 +1,14 @@
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, privateProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, privateProcedure } from "../trpc";
 import { z } from "zod";
-import { clerkClient } from "@clerk/nextjs";
-import cloudinary from "~/server/cloudinary";
 
+// calculates a duration of the database operation
 export const handleDuration = async (handler: any) => {
+  // sets current time
   const startTime = process.hrtime();
   const result = await handler;
   const duration = process.hrtime(startTime);
+
   // Calculate the duration in milliseconds
   const milliseconds = duration[0] + duration[1] / 1e9;
 
@@ -15,9 +16,13 @@ export const handleDuration = async (handler: any) => {
   return { result };
 };
 
+// chats router
 export const chatsRouter = createTRPCRouter({
+  // gets a list of chats based on user id
   getAllById: privateProcedure
+    // validates input values
     .input(z.object({ id: z.string() }))
+    // make a query to the database
     .query(async ({ ctx, input }) => {
       const chats = await ctx.prisma.chat.findMany({
         where: { OR: [{ user1_id: input.id }, { user2_id: input.id }] },
@@ -25,7 +30,9 @@ export const chatsRouter = createTRPCRouter({
 
       return chats;
     }),
+  // updates a chat when a new message is sent
   update: privateProcedure
+    // validates input values
     .input(
       z.object({
         id: z.string(),
@@ -33,6 +40,7 @@ export const chatsRouter = createTRPCRouter({
         last_message_createdAt: z.date(),
       })
     )
+    // mutates || updates a chat
     .mutation(async ({ ctx, input }) => {
       const updatedChat = await ctx.prisma.chat.update({
         where: { id: input.id },
@@ -41,10 +49,20 @@ export const chatsRouter = createTRPCRouter({
           last_message_createdAt: input.last_message_createdAt,
         },
       });
-      if (!updatedChat) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      // throws an error if something goes wrong
+      if (!updatedChat)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Error occured during updating a chat",
+        });
+
+      // returns an updated chat
       return updatedChat;
     }),
+  // create a new chat
   create: privateProcedure
+    // validates input values
     .input(
       z.object({
         user1_id: z.string(),
@@ -55,6 +73,7 @@ export const chatsRouter = createTRPCRouter({
         user2_imageUrl: z.string(),
       })
     )
+    // creates a new chat
     .mutation(async ({ ctx, input }) => {
       const { result: chat } = await handleDuration(
         ctx.prisma.chat.create({
@@ -70,16 +89,34 @@ export const chatsRouter = createTRPCRouter({
           },
         })
       );
-      if (!chat) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      // throws an error if something goes wrong
+      if (!chat)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Error occured during creating a chat",
+        });
+
+      // returns a new chat
       return chat;
     }),
+  // deletes a chat
   delete: privateProcedure
+    // validates input values
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const deletedChat = await ctx.prisma.chat.delete({
         where: { id: input.id },
       });
-      if (!deletedChat) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      // throws an error if something goes wrong
+      if (!deletedChat)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Error occured during deleting a chat",
+        });
+
+      // returns a deleted chat
       return deletedChat;
     }),
 });

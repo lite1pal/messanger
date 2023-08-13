@@ -8,9 +8,9 @@ import { toast } from "react-hot-toast";
 import { formatTime } from "./chatroom";
 import { Socket } from "socket.io-client";
 import { DefaultEventsMap } from "socket.io/dist/typed-events";
-import { dark } from "@clerk/themes";
 
-export type Chat = {
+// interfaces
+export interface Chat {
   id: string;
   user1_id: string;
   user1_name: string;
@@ -20,36 +20,43 @@ export type Chat = {
   user2_imageUrl: string;
   createdAt: Date;
   updatedAt: Date;
-};
+}
 
-export type Props = {
+export interface Props {
   currentChat: Chat;
   setCurrentChat: Dispatch<SetStateAction<Chat>>;
   socket: Socket<DefaultEventsMap, DefaultEventsMap>;
   darkMode: boolean;
   setDarkMode: Dispatch<SetStateAction<boolean>>;
   isOnline: boolean;
-};
+}
 
 const Sidebar = (props: Props) => {
+  // gets info about current user using clerk API
   const { user: currentUser } = useUser();
+
+  // renders LoadingSpinner if current user is still null
   if (!currentUser) {
     return <LoadingSpinner />;
   }
 
-  const currentChat = props.currentChat;
-  const { darkMode, setDarkMode } = props;
-
+  // react state
   const [foundedUsers, setFoundedUsers] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [chatContextVision, setChatContextVision] = useState(false);
-  const { isOnline } = props;
 
+  // props
+  const { currentChat, setCurrentChat, darkMode, setDarkMode, isOnline } =
+    props;
+
+  // fetches a list of users from the database using tRPC API
   const { data: users, isLoading: usersLoading } =
     api.users.getAllUsers.useQuery();
 
+  // API context
   const ctx = api.useContext();
 
+  // fetches a list of chats based on current user id from the database using trRPC API
   const { data: chats } = api.chats.getAllById.useQuery({
     id: currentUser.id,
   });
@@ -63,13 +70,8 @@ const Sidebar = (props: Props) => {
     }
   };
 
-  // create a new chat
-  const {
-    mutate,
-    isLoading: creatingChat,
-    error,
-    data,
-  } = api.chats.create.useMutation({
+  // gets mutate func to create a new chat
+  const { mutate, isLoading: creatingChat } = api.chats.create.useMutation({
     onSuccess: () => {
       ctx.chats.invalidate().then(() => {
         toast.success(`A new chat created`);
@@ -81,17 +83,22 @@ const Sidebar = (props: Props) => {
     },
   });
 
+  // creates a new chat
   const createChat = (user: User) => {
+    // user cannot create a chat with himself
+    // CAN BE EVEN BETTER IF A USER CANNOT FIND HIMSELF SEARCHING
     if (currentUser.id === user.id) {
       return toast.error("You are not allowed to create a chat with yourself");
     }
+
+    // cannot be 2 chats with the same users
     const isChatAlready = chats?.some((chat) => {
       return chat.user1_id === user.id || chat.user2_id === user.id;
     });
-
     if (isChatAlready) {
       return toast.error("You are already in a chat with this user");
     }
+
     if (currentUser && currentUser.firstName && user.firstName) {
       mutate({
         user1_id: currentUser.id,
@@ -104,11 +111,11 @@ const Sidebar = (props: Props) => {
     }
   };
 
-  // delete a chat
+  // gets mutate func to delete a chat
   const { mutate: deleteChat } = api.chats.delete.useMutation({
     onSuccess: () => {
       void ctx.chats.invalidate();
-      props.setCurrentChat({ ...currentChat, id: "" });
+      setCurrentChat({ ...currentChat, id: "" });
       setChatContextVision(false);
     },
     onError: (err) => {
@@ -144,10 +151,9 @@ const Sidebar = (props: Props) => {
         currentChat.id && "hidden md:flex"
       } flex-col border dark:border-stone-800 dark:bg-stone-900 md:w-1/2`}
     >
+      {/*   Sidebar's header   */}
       <div className="flex items-center justify-between space-x-1 p-5">
-        {/* <i className="fa-solid fa-bars"></i> */}
         <UserButton afterSignOutUrl="/" />
-        {isOnline && <div>Online</div>}
         <div
           onClick={handleDarkModeSwitch}
           className="rounded-full px-2 py-1 transition hover:bg-slate-300 dark:hover:bg-stone-600"
@@ -184,6 +190,7 @@ const Sidebar = (props: Props) => {
 
       <hr className="my-4 dark:opacity-30" />
 
+      {/*   Found users   */}
       <div className=" w-full">
         {/* {usersLoading && <LoadingSpinner />} */}
         {foundedUsers.map((user) => {
@@ -224,6 +231,8 @@ const Sidebar = (props: Props) => {
         <div className="mx-4 my-2 w-fit text-slate-500">Chats</div>
       )}
 
+      {/*   Chats    */}
+
       <div className="flex flex-col">
         {chats !== undefined && chats.length === 0 && (
           <div className="flex flex-col items-center space-y-3 p-5 text-slate-600 dark:text-slate-300">
@@ -241,11 +250,11 @@ const Sidebar = (props: Props) => {
                 : { chat_name: chat.user1_name, imageUrl: chat.user1_imageUrl };
             return (
               <div
-                onClick={() => props.setCurrentChat(chat)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setChatContextVision(true);
-                }}
+                onClick={() => setCurrentChat(chat)}
+                // onContextMenu={(e) => {
+                //   e.preventDefault();
+                //   setChatContextVision(true);
+                // }}
                 key={chat.id}
                 className={`${
                   currentChat.id === chat.id
@@ -259,7 +268,6 @@ const Sidebar = (props: Props) => {
                   } absolute left-16 flex w-fit cursor-default flex-col space-y-1 rounded bg-slate-50 text-sm transition dark:bg-stone-900 dark:text-white`}
                 >
                   <div
-                    // onClick={() => {}}
                     onClick={() => {
                       deleteChat({ id: currentChat.id });
                     }}
