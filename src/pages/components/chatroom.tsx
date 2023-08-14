@@ -317,7 +317,7 @@ const Chatroom = (props: Props) => {
           <div
             className={`${
               !chatOptionsVision && "pointer-events-none opacity-0"
-            } absolute right-6 top-16 flex w-2/12 flex-col space-y-1 bg-slate-50 bg-opacity-95 p-2 text-sm transition dark:bg-stone-900 dark:text-white`}
+            } absolute right-6 top-16 flex flex-col space-y-1 bg-slate-50 bg-opacity-95 p-2 text-sm transition dark:bg-stone-900 dark:text-white`}
           >
             {/* <div className="flex items-center space-x-4 rounded-full p-2 hover:bg-slate-200 dark:hover:bg-stone-700">
               <div>
