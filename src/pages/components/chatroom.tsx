@@ -123,7 +123,7 @@ const Chatroom = (props: Props) => {
     });
   }, []);
 
-  // gets mutate function that can be use to create a new message
+  // gets mutate function that can be used to create a new message
   const { mutate, isLoading: sendingMessageLoading } =
     api.messages.create.useMutation({
       // in case of successfully created message, this callback function is invoked
@@ -134,15 +134,16 @@ const Chatroom = (props: Props) => {
           currentUser.id === currentChat.user2_id
         ) {
           // emits necessary data to the server in order to update messages in real-time for both users
-          socket.emit("send_message", {
-            user_id: currentUser.id,
-            chat_id: currentChat.id,
-            message: messageInput.length > 0 ? messageInput : "empty",
-            imageId: imageInput,
-            createdAt: new Date(),
-          });
+          // socket.emit("send_message", {
+          //   user_id: currentUser.id,
+          //   chat_id: currentChat.id,
+          //   message: messageInput.length > 0 ? messageInput : "empty",
+          //   imageId: imageInput,
+          //   createdAt: new Date(),
+          // });
 
           // CAN BE REMOVED
+
           void ctx.messages.invalidate();
         }
         // clears message input
@@ -261,7 +262,7 @@ const Chatroom = (props: Props) => {
     if (divRef.current) {
       divRef.current.scrollTop = divRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages?.length]);
 
   // renders actual chatroom component
   return (
