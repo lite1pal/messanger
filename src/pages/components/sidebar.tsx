@@ -196,29 +196,27 @@ const Sidebar = (props: Props) => {
         {foundedUsers.map((user) => {
           return (
             <div key={user.id}>
-              <div className="mx-4 my-2 w-fit text-slate-500">Users</div>
-              <div className="flex w-4/6 items-center justify-between p-4">
+              <div className="mx-4 w-fit text-slate-500">Users</div>
+              <div className="flex w-full items-center justify-between p-4">
                 <div className="flex items-center space-x-3">
                   <div>
                     <Image
-                      width="42"
-                      height="42"
+                      width="56"
+                      height="56"
                       src={user.imageUrl}
                       alt="userImage"
                       className="rounded-full"
                     />
                   </div>
-                  <div className="mb-4 text-sm dark:text-white">
-                    {user.firstName}
-                  </div>
+                  <div className=" dark:text-white">{user.firstName}</div>
                 </div>
                 <div
-                  className=" cursor-pointer text-slate-700 transition hover:animate-pulse dark:text-slate-300"
+                  className=" cursor-pointer rounded text-slate-700 transition dark:text-slate-300"
                   onClick={() => {
                     createChat(user);
                   }}
                 >
-                  start a chat
+                  begin chatting
                 </div>
               </div>
               <hr className="dark:opacity-30" />
@@ -296,7 +294,7 @@ const Sidebar = (props: Props) => {
                         currentChat.id === chat.id && "text-white"
                       } font-light text-gray-500 dark:text-gray-300`}
                     >
-                      {chat.last_message}
+                      {chat.last_message.slice(0, 25) + "..."}
                     </div>
                   </div>
                 </div>

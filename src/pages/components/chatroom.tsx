@@ -176,7 +176,7 @@ const Chatroom = (props: Props) => {
       e.key === "Enter"
     ) {
       setIsSendingMessage(true);
-
+      moveChatroomBottom();
       // tries to create a message
       mutate({
         user_id: currentUser.id,
@@ -256,13 +256,17 @@ const Chatroom = (props: Props) => {
     },
   });
 
-  // NEEDS TO BE UPDATED BECAUSE IF A SUDDEN RENDER OCCURS, IT MOVES IT TO THE BOTTOM EVEN IF YOU SCROLLED TO THE MIDDLE OF THE CONVERSATION
-  // set a scroll of the chatroom to the bottom when a message is sent
-  useEffect(() => {
+  const moveChatroomBottom = () => {
     if (divRef.current) {
       divRef.current.scrollTop = divRef.current.scrollHeight;
     }
-  }, [messages?.length]);
+  };
+
+  // NEEDS TO BE UPDATED BECAUSE IF A SUDDEN RENDER OCCURS, IT MOVES IT TO THE BOTTOM EVEN IF YOU SCROLLED TO THE MIDDLE OF THE CONVERSATION
+  // set a scroll of the chatroom to the bottom when a message is sent
+  useEffect(() => {
+    moveChatroomBottom();
+  }, [messages?.length, currentChat.id]);
 
   // renders actual chatroom component
   return (
@@ -425,10 +429,13 @@ const Chatroom = (props: Props) => {
                         sizes="100vw"
                         alt="Description of my image"
                       />
+                      <div className="mt-2 text-xs font-light text-slate-500 dark:text-slate-200">
+                        {formattedTime}
+                      </div>
                     </div>
                   ) : (
                     <div
-                      className={`flex w-fit items-center justify-between space-x-3 rounded-xl ${
+                      className={`flex w-fit items-center justify-between space-x-3 break-words rounded-xl ${
                         !messageRight && "bg-white dark:bg-stone-700"
                       }  bg-green-400 px-2 py-1 dark:bg-purple-600`}
                     >
@@ -443,6 +450,11 @@ const Chatroom = (props: Props) => {
             );
           })}
         </div>
+        {isSendingMessage && (
+          <div className="absolute bottom-20">
+            <LoadingSpinner />
+          </div>
+        )}
 
         {/*   Message input with emoji picker  */}
 
