@@ -220,10 +220,15 @@ const Chatroom = (props: Props) => {
     }
   };
 
+  // gets mutate func to delete all messages of a chat
+  const { mutate: deleteMessages } =
+    api.messages.deleteAllByChatId.useMutation();
+
   // gets mutate func to delete a chat
   const { mutate: deleteChat } = api.chats.delete.useMutation({
     onSuccess: () => {
       void ctx.chats.invalidate();
+      deleteMessages({ chat_id: currentChat.id });
 
       // sets current chat id to empty string and therefore hides the chatroom
       props.setCurrentChat({ ...currentChat, id: "" });

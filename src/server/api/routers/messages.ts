@@ -64,4 +64,12 @@ export const messagesRouter = createTRPCRouter({
 
       return message;
     }),
+  deleteAllByChatId: privateProcedure
+    .input(z.object({ chat_id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.prisma.message.deleteMany({
+        where: { chat_id: input.chat_id },
+      });
+      return result;
+    }),
 });
