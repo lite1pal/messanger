@@ -127,29 +127,31 @@ const Chatroom = (props: Props) => {
   const { mutate, isLoading: sendingMessageLoading } =
     api.messages.create.useMutation({
       // in case of successfully created message, this callback function is invoked
-      onSuccess: () => {
+      onSuccess: (data) => {
         // only users that belong to this chat must see the change in real-time
         if (
           currentUser.id === currentChat.user1_id ||
           currentUser.id === currentChat.user2_id
         ) {
-          // emits necessary data to the server in order to update messages in real-time for both users
-          // socket.emit("send_message", {
-          //   user_id: currentUser.id,
-          //   chat_id: currentChat.id,
-          //   message: messageInput.length > 0 ? messageInput : "empty",
-          //   imageId: imageInput,
-          //   createdAt: new Date(),
-          // });
+          if (data.ratelimit) {
+            toast.error("Too many messages");
+          } else {
+            // emits necessary data to the server in order to update messages in real-time for both users
+            socket.emit("send_message", {
+              user_id: currentUser.id,
+              chat_id: currentChat.id,
+              message: messageInput.length > 0 ? messageInput : "empty",
+              imageId: imageInput,
+              createdAt: new Date(),
+            });
 
-          // CAN BE REMOVED
-
-          void ctx.messages.invalidate();
+            // CAN BE REMOVED
+            void ctx.messages.invalidate();
+          }
         }
         // clears message input
         setMessageInput("");
         setImageInput("");
-        setIsSendingMessage(false);
       },
       // if error occurs, this callback function is invoked
       onError: (err) => {
@@ -173,7 +175,8 @@ const Chatroom = (props: Props) => {
     if (
       // input must not be empty and Enter must be clicked to send a message
       e.target.value.length > 0 &&
-      e.key === "Enter"
+      e.key === "Enter" &&
+      !isSendingMessage
     ) {
       setIsSendingMessage(true);
       moveChatroomBottom();
@@ -266,6 +269,7 @@ const Chatroom = (props: Props) => {
   // set a scroll of the chatroom to the bottom when a message is sent
   useEffect(() => {
     moveChatroomBottom();
+    setIsSendingMessage(false);
   }, [messages?.length, currentChat.id]);
 
   // renders actual chatroom component
@@ -423,8 +427,8 @@ const Chatroom = (props: Props) => {
                   {message.imageId && message.imageId !== "empty" ? (
                     <div className="rounded border-gray-400">
                       <CldImage
-                        width="400"
-                        height="400"
+                        width="270"
+                        height="270"
                         src={message.imageId}
                         sizes="100vw"
                         alt="Description of my image"

@@ -2,10 +2,20 @@ import { z } from "zod";
 import { createTRPCRouter, privateProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { handleDuration } from "./chats";
-import { EventEmitter } from "stream";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis/nodejs";
 
-// declares a new EventEmitter that can emit an event to front-end
-const ee = new EventEmitter();
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(10, "10 s"),
+  analytics: true,
+  /**
+   * Optional prefix for the keys used in redis. This is useful if you want to share a redis
+   * instance with other applications and want to avoid key collisions. The default prefix is
+   * "@upstash/ratelimit"
+   */
+  prefix: "@upstash/ratelimit",
+});
 
 // messages router that listens for requests from front-end and then validates incomeing data, makes certain calculations and sends a response back to front-end
 export const messagesRouter = createTRPCRouter({
@@ -31,6 +41,11 @@ export const messagesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { success } = await ratelimit.limit(input.user_id);
+
+      if (!success) {
+        return { ratelimit: true };
+      }
       const { result: message } = await handleDuration(
         ctx.prisma.message.create({
           data: {
@@ -47,7 +62,6 @@ export const messagesRouter = createTRPCRouter({
           message: "Error occured during creating a new message",
         });
 
-      ee.emit("create", message);
       return message;
     }),
 });
